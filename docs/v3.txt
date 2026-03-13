@@ -1,0 +1,279 @@
+Great 👍 Let’s design **Exchange_Tool v2** — a faster and more powerful scanner for **perpetual USDT pairs** on Binance and Bybit.
+
+Goal of **v2**:
+
+* scan **all pairs in a few seconds**
+* detect **strong sell-offs**
+* detect **volume spikes**
+* include **funding rate**
+* include **open interest**
+* rank opportunities
+
+This is similar to what **professional crypto scanners** do.
+
+---
+
+# 1️⃣ New Project Structure
+
+```text
+Exchange_Tool/
+│
+├── config.py
+├── main.py
+│
+├── exchanges/
+│   ├── binance.py
+│   └── bybit.py
+│
+├── core/
+│   ├── scanner.py
+│   ├── indicators.py
+│   └── ranking.py
+│
+├── utils/
+│   ├── http.py
+│   └── logger.py
+```
+
+Advantages:
+
+* easy to expand
+* clean separation
+* multi-exchange support
+
+---
+
+# 2️⃣ Strategy Signals (v2)
+
+We combine **four signals**.
+
+| Signal                 | Meaning               |
+| ---------------------- | --------------------- |
+| price drop             | strong downward move  |
+| volume spike           | panic selling         |
+| open interest increase | new positions opening |
+| funding extreme        | market bias           |
+
+Example detection rule:
+
+```text
+price_change < -4%
+volume_change > +80%
+open_interest_change > +5%
+funding_rate > 0.03%
+```
+
+---
+
+# 3️⃣ config.py
+
+```python
+CANDLE_INTERVAL = "4h"
+
+PRICE_DROP = -4
+VOLUME_SPIKE = 80
+OI_INCREASE = 5
+
+TOP_RESULTS = 20
+```
+
+---
+
+# 4️⃣ Fast Async Scanner (core/scanner.py)
+
+To scan hundreds of pairs quickly we use **async requests**.
+
+```python
+import asyncio
+import aiohttp
+
+
+async def fetch(session, url, params=None):
+    async with session.get(url, params=params) as r:
+        return await r.json()
+
+
+async def scan_pairs(pairs, fetch_klines):
+
+    results = []
+
+    async with aiohttp.ClientSession() as session:
+
+        tasks = []
+        for p in pairs:
+            tasks.append(fetch_klines(session, p))
+
+        responses = await asyncio.gather(*tasks)
+
+        for symbol, candles in responses:
+
+            prev = candles[-2]
+            last = candles[-1]
+
+            prev_close = float(prev[4])
+            last_close = float(last[4])
+
+            prev_vol = float(prev[5])
+            last_vol = float(last[5])
+
+            price_change = (last_close - prev_close) / prev_close * 100
+            volume_change = (last_vol - prev_vol) / prev_vol * 100
+
+            results.append({
+                "symbol": symbol,
+                "price_change": price_change,
+                "volume_change": volume_change
+            })
+
+    return results
+```
+
+Async scanning lets you scan **300+ pairs in seconds**.
+
+---
+
+# 5️⃣ Ranking Opportunities (core/ranking.py)
+
+Instead of just printing results, we **rank them**.
+
+```python
+def rank_signals(data):
+
+    for d in data:
+
+        score = (
+            abs(d["price_change"]) * 2 +
+            d["volume_change"]
+        )
+
+        d["score"] = score
+
+    return sorted(data, key=lambda x: x["score"], reverse=True)
+```
+
+Higher score = stronger signal.
+
+---
+
+# 6️⃣ main.py
+
+```python
+import asyncio
+from exchanges.binance import get_pairs, fetch_klines
+from core.scanner import scan_pairs
+from core.ranking import rank_signals
+
+
+async def run():
+
+    pairs = get_pairs()
+
+    data = await scan_pairs(pairs, fetch_klines)
+
+    ranked = rank_signals(data)
+
+    print("\nTop opportunities:\n")
+
+    for r in ranked[:20]:
+
+        print(
+            r["symbol"],
+            "price:", round(r["price_change"],2),
+            "volume:", round(r["volume_change"],2),
+            "score:", round(r["score"],2)
+        )
+
+
+asyncio.run(run())
+```
+
+---
+
+# 7️⃣ Example Output
+
+```
+Top opportunities
+
+DOGEUSDT price -7.4 volume 210 score 224
+PEPEUSDT price -6.1 volume 180 score 192
+SOLUSDT price -5.9 volume 150 score 162
+```
+
+These often correspond to:
+
+* liquidation cascades
+* panic selling
+* trend continuation
+
+---
+
+# 8️⃣ Adding Funding Rate
+
+From Binance:
+
+```
+GET /fapi/v1/premiumIndex
+```
+
+Example signal:
+
+```
+funding > 0.05
++
+price falling
+```
+
+This often means **over-leveraged longs getting liquidated**.
+
+---
+
+# 9️⃣ Adding Open Interest
+
+From Binance:
+
+```
+/fapi/v1/openInterest
+```
+
+Key signal:
+
+```
+OI rising
++
+price falling
+```
+
+Meaning **new shorts entering market**.
+
+---
+
+# 🔟 Future Upgrades
+
+Exchange_Tool v3 could include:
+
+### liquidation detection
+
+Tracking data similar to Coinglass.
+
+---
+
+### live websocket scanner
+
+Real-time signals.
+
+---
+
+### trading alerts
+
+Send signals to:
+
+* Telegram
+* Discord
+* Slack
+
+---
+
+### machine learning ranking
+
+Score signals automatically.
+

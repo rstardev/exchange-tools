@@ -1,0 +1,238 @@
+Great — this is one of the **most powerful concepts used by professional crypto traders**: the **Liquidity Magnet Model**.
+
+It tries to answer:
+
+> **“Where will price move next because liquidations are sitting there?”**
+
+Markets like those on Binance and Bybit often move **toward large pools of liquidations**. Those zones provide liquidity for big players to enter/exit positions.
+
+---
+
+# 1️⃣ Core Idea: Liquidity Magnet
+
+If many traders are **long with leverage**, their **liquidations sit below price**.
+
+Example:
+
+```
+Current price: 64,000
+
+Liquidation clusters:
+63,800 → $200M
+63,200 → $600M
+62,700 → $1.4B
+```
+
+This means:
+
+➡ price is **magnetically attracted to $62,700**.
+
+Why?
+
+Because market makers can:
+
+* trigger liquidations
+* collect liquidity
+* open large positions
+
+---
+
+# 2️⃣ Simplified Magnet Score
+
+We compute a **magnet score** for each price level.
+
+Formula:
+
+```
+magnet_score = liquidation_size / distance_from_price
+```
+
+Where:
+
+```
+distance = abs(level - current_price)
+```
+
+Big liquidation + close distance = **strong magnet**.
+
+---
+
+# 3️⃣ Python Example
+
+`liquidity_magnet.py`
+
+```python
+def compute_magnet_levels(current_price, liquidation_levels):
+
+    magnets = []
+
+    for level in liquidation_levels:
+
+        price = level["price"]
+        size = level["size"]
+
+        distance = abs(price - current_price)
+
+        if distance == 0:
+            continue
+
+        magnet_score = size / distance
+
+        magnets.append({
+            "price": price,
+            "size": size,
+            "score": magnet_score
+        })
+
+    magnets.sort(key=lambda x: x["score"], reverse=True)
+
+    return magnets
+```
+
+---
+
+# 4️⃣ Example Input
+
+```python
+current_price = 64000
+
+liquidation_levels = [
+    {"price": 63800, "size": 200_000_000},
+    {"price": 63200, "size": 600_000_000},
+    {"price": 62700, "size": 1_400_000_000},
+]
+```
+
+---
+
+# 5️⃣ Example Output
+
+```
+Top Magnet Levels
+
+63800  score: 1,000,000
+63200  score: 750,000
+62700  score: 538,000
+```
+
+Meaning:
+
+➡ **63,800 is the most likely short-term target**
+
+---
+
+# 6️⃣ Predicting Direction
+
+We split levels:
+
+```
+below price → long liquidations
+above price → short liquidations
+```
+
+If **below magnets > above magnets**:
+
+➡ market likely **moves downward**
+
+If **above magnets > below magnets**:
+
+➡ market likely **moves upward**
+
+---
+
+# 7️⃣ Direction Prediction Script
+
+```python
+def predict_direction(current_price, magnets):
+
+    below = 0
+    above = 0
+
+    for m in magnets:
+
+        if m["price"] < current_price:
+            below += m["score"]
+        else:
+            above += m["score"]
+
+    if below > above:
+        return "DOWNWARD LIQUIDITY TARGET"
+
+    return "UPWARD LIQUIDITY TARGET"
+```
+
+---
+
+# 8️⃣ Example Result
+
+```
+BTCUSDT Liquidity Prediction
+
+Current price: 64,000
+
+Top magnets:
+63,800 → $200M
+63,200 → $600M
+62,700 → $1.4B
+
+Prediction:
+DOWNWARD LIQUIDITY TARGET
+```
+
+---
+
+# 9️⃣ Professional Upgrade
+
+Professional desks also include:
+
+**order book imbalance**
+
+```
+bid liquidity
+ask liquidity
+```
+
+API endpoint on Binance:
+
+```
+/fapi/v1/depth
+```
+
+This shows **hidden liquidity walls**.
+
+---
+
+# 🔟 Real Trading Workflow
+
+Professional traders combine:
+
+1️⃣ **funding rate extremes**
+2️⃣ **open interest spikes**
+3️⃣ **liquidation magnets**
+4️⃣ **order book imbalance**
+
+When all align:
+
+➡ **very high probability trade**
+
+---
+
+# ⚡ Example Real Signal
+
+```
+ETHUSDT
+
+price: 3,240
+funding: +0.08%
+OI change: +9%
+liquidation cluster: 3,150 ($900M)
+
+Prediction:
+LONGS LIKELY TO BE LIQUIDATED
+```
+
+Trade idea:
+
+```
+short → target 3,150
+```

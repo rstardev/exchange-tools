@@ -1,0 +1,263 @@
+Great idea 👍 — we can design a small **Exchange_Tool** project to scan perpetual USDT pairs on Binance and Bybit and detect coins where:
+
+* a candle period is defined (ex: **4h**)
+* **price dropped significantly**
+* **volume increased significantly**
+
+This is often used to detect **possible liquidation cascades or panic selling**.
+
+Below is a **clean project architecture + working Python starter code**.
+
+---
+
+# 1️⃣ Project Structure
+
+```
+Exchange_Tool/
+│
+├─ config.py
+├─ main.py
+├─ binance_api.py
+├─ bybit_api.py
+├─ scanner.py
+└─ utils.py
+```
+
+Purpose:
+
+| File           | Purpose            |
+| -------------- | ------------------ |
+| config.py      | strategy settings  |
+| binance_api.py | fetch Binance data |
+| bybit_api.py   | fetch Bybit data   |
+| scanner.py     | price/volume logic |
+| utils.py       | helpers            |
+| main.py        | run scanner        |
+
+---
+
+# 2️⃣ Strategy Logic
+
+We want to detect coins where:
+
+```
+price_change < -X %
+volume_change > Y %
+```
+
+Example thresholds:
+
+```
+price drop: -5%
+volume increase: +100%
+timeframe: 4h
+```
+
+---
+
+# 3️⃣ config.py
+
+```python
+CANDLE_INTERVAL = "4h"
+
+PRICE_DROP_THRESHOLD = -5      # %
+VOLUME_INCREASE_THRESHOLD = 100  # %
+
+BINANCE_FUTURES_URL = "https://fapi.binance.com"
+BYBIT_FUTURES_URL = "https://api.bybit.com"
+```
+
+---
+
+# 4️⃣ Binance API (binance_api.py)
+
+```python
+import requests
+
+BASE = "https://fapi.binance.com"
+
+def get_usdt_pairs():
+    url = f"{BASE}/fapi/v1/exchangeInfo"
+    data = requests.get(url).json()
+
+    pairs = []
+    for s in data["symbols"]:
+        if s["quoteAsset"] == "USDT" and s["contractType"] == "PERPETUAL":
+            pairs.append(s["symbol"])
+    return pairs
+
+
+def get_klines(symbol, interval="4h", limit=2):
+    url = f"{BASE}/fapi/v1/klines"
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit
+    }
+
+    return requests.get(url, params=params).json()
+```
+
+---
+
+# 5️⃣ Bybit API (bybit_api.py)
+
+```python
+import requests
+
+BASE = "https://api.bybit.com"
+
+
+def get_usdt_pairs():
+    url = f"{BASE}/v5/market/instruments-info?category=linear"
+    data = requests.get(url).json()["result"]["list"]
+
+    pairs = []
+    for s in data:
+        if s["quoteCoin"] == "USDT":
+            pairs.append(s["symbol"])
+    return pairs
+
+
+def get_klines(symbol, interval="240", limit=2):
+    url = f"{BASE}/v5/market/kline"
+
+    params = {
+        "category": "linear",
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit
+    }
+
+    return requests.get(url, params=params).json()["result"]["list"]
+```
+
+---
+
+# 6️⃣ Scanner Logic (scanner.py)
+
+```python
+def analyze_candles(prev_candle, last_candle):
+
+    prev_close = float(prev_candle[4])
+    last_close = float(last_candle[4])
+
+    prev_volume = float(prev_candle[5])
+    last_volume = float(last_candle[5])
+
+    price_change = (last_close - prev_close) / prev_close * 100
+    volume_change = (last_volume - prev_volume) / prev_volume * 100
+
+    return price_change, volume_change
+```
+
+---
+
+# 7️⃣ Main Scanner (main.py)
+
+```python
+from binance_api import get_usdt_pairs, get_klines
+from scanner import analyze_candles
+from config import *
+
+def scan_binance():
+
+    pairs = get_usdt_pairs()
+
+    for symbol in pairs:
+
+        klines = get_klines(symbol, CANDLE_INTERVAL)
+
+        if len(klines) < 2:
+            continue
+
+        prev = klines[-2]
+        last = klines[-1]
+
+        price_change, volume_change = analyze_candles(prev, last)
+
+        if price_change < PRICE_DROP_THRESHOLD and volume_change > VOLUME_INCREASE_THRESHOLD:
+
+            print(
+                symbol,
+                "price:", round(price_change,2), "%",
+                "volume:", round(volume_change,2), "%"
+            )
+
+
+if __name__ == "__main__":
+    scan_binance()
+```
+
+---
+
+# 8️⃣ Example Output
+
+```
+Scanning Binance Futures...
+
+DOGEUSDT price: -6.3% volume: 145%
+1000PEPEUSDT price: -5.8% volume: 210%
+SOLUSDT price: -5.1% volume: 130%
+```
+
+These coins might be experiencing:
+
+* panic selling
+* liquidation cascade
+* momentum move
+
+---
+
+# 9️⃣ Next Improvements
+
+Good upgrades for this project:
+
+### add both exchanges
+
+```
+scan_binance()
+scan_bybit()
+```
+
+---
+
+### sort by strongest signal
+
+```
+score = volume_change - abs(price_change)
+```
+
+---
+
+### add open interest data
+
+Important for derivatives trading.
+
+---
+
+### add alerts
+
+```
+telegram
+discord
+email
+```
+
+---
+
+# 🔟 Advanced Version (Professional Traders)
+
+Professional scanners also track:
+
+```
+funding rate
+open interest spikes
+liquidations
+order book imbalance
+```
+
+Combining these signals greatly improves accuracy.
+
+---
+
